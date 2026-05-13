@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>MEXC Trading Bot</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: #0f0f1a;
+    --bg2: #1a1a2e;
+    --bg3: #16213e;
+    --card: #1e1e35;
+    --border: #2a2a4a;
+    --text: #e8e8f0;
+    --muted: #8888aa;
+    --green: #00d4aa;
+    --red: #ff4d6d;
+    --yellow: #ffd60a;
+    --blue: #4361ee;
+    --purple: #7b2ff7;
+    --radius: 14px;
+    --radius-sm: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; padding-bottom: 80px; }
+
+  /* Nav tabs */
+  .nav { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg2); border-top: 1px solid var(--border); display: flex; z-index: 100; }
+  .nav-btn { flex: 1; padding: 10px 0 14px; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); background: none; border: none; cursor: pointer; transition: color .2s; }
+  .nav-btn.active { color: var(--green); }
+  .nav-btn svg { width: 22px; height: 22px; }
+
+  /* Pages */
+  .page { display: none; padding: 16px; }
+  .page.active { display: block; }
+
+  /* Header */
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .header-title { font-size: 20px; font-weight: 700; }
+  .status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--red); display: inline-block; margin-right: 6px; }
+  .status-dot.on { background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  /* Cards */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+  .card-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 10px; }
+
+  /* Price display */
+  .price-big { font-size: 36px; font-weight: 700; letter-spacing: -1px; }
+  .price-change { font-size: 14px; margin-top: 4px; }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+
+  /* Stats grid */
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; }
+  .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px; }
+  .stat-value { font-size: 18px; font-weight: 600; }
+
+  /* Indicators */
+  .ind-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .ind-row:last-child { border-bottom: none; }
+  .ind-name { font-size: 13px; color: var(--muted); }
+  .ind-val { font-size: 14px; font-weight: 600; }
+  .rsi-bar-wrap { flex: 1; margin: 0 12px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .rsi-bar-fill { height: 100%; border-radius: 2px; transition: width .5s; }
+
+  /* Signal badge */
+  .signal-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+  .signal-buy { background: rgba(0,212,170,.15); color: var(--green); border: 1px solid rgba(0,212,170,.3); }
+  .signal-sell { background: rgba(255,77,109,.15); color: var(--red); border: 1px solid rgba(255,77,109,.3); }
+  .signal-hold { background: rgba(136,136,170,.15); color: var(--muted); border: 1px solid rgba(136,136,170,.3); }
+
+  /* Buttons */
+  .btn { width: 100%; padding: 15px; border-radius: var(--radius); border: none; font-size: 15px; font-weight: 600; cursor: pointer; transition: transform .1s, opacity .1s; }
+  .btn:active { transform: scale(.97); opacity: .85; }
+  .btn-start { background: linear-gradient(135deg, #00d4aa, #00a884); color: #000; }
+  .btn-stop { background: linear-gradient(135deg, #ff4d6d, #cc2244); color: #fff; }
+  .btn-emergency { background: linear-gradient(135deg, #ff0044, #880022); color: #fff; font-size: 16px; letter-spacing: .5px; }
+  .btn-save { background: linear-gradient(135deg, #4361ee, #2233cc); color: #fff; }
+  .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+
+  /* Chart */
+  .chart-wrap { position: relative; height: 200px; }
+
+  /* Trade history */
+  .trade-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .trade-item:last-child { border-bottom: none; }
+  .trade-side { width: 48px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+  .trade-buy { background: rgba(0,212,170,.2); color: var(--green); }
+  .trade-sell { background: rgba(255,77,109,.2); color: var(--red); }
+  .trade-info { flex: 1; margin-left: 10px; }
+  .trade-price { font-size: 14px; font-weight: 600; }
+  .trade-time { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .trade-pnl { font-size: 14px; font-weight: 600; text-align: right; }
+  .empty-state { text-align: center; color: var(--muted); padding: 40px 0; font-size: 14px; }
+
+  /* Settings */
+  .setting-row { margin-bottom: 16px; }
+  .setting-label { font-size: 13px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
+  .setting-label span { color: var(--text); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--green); }
+  input[type=number], input[type=text] { width: 100%; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; color: var(--text); font-size: 15px; outline: none; }
+  input[type=number]:focus, input[type=text]:focus { border-color: var(--green); }
+
+  /* PnL summary */
+  .pnl-big { text-align: center; padding: 20px 0; }
+  .pnl-number { font-size: 42px; font-weight: 700; }
+  .pnl-label { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+  /* Toast */
+  .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-80px); background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 20px; font-size: 13px; z-index: 999; transition: transform .3s; white-space: nowrap; }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<div id="toast" class="toast"></div>
+
+<!-- ══ PAGE: DASHBOARD ══ -->
+<div id="page-dashboard" class="page active">
+  <div class="header">
+    <div class="header-title">
+      <span class="status-dot" id="status-dot"></span>DOGE/USDT
+    </div>
+    <div id="signal-badge" class="signal-badge signal-hold">— HOLD</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Текущая цена</div>
+    <div class="price-big" id="price-display">—</div>
+    <div class="price-change" id="price-change">загрузка...</div>
+    <div class="chart-wrap" style="margin-top:16px">
+      <canvas id="priceChart"></canvas>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Баланс USDT</div>
+      <div class="stat-value" id="bal-usdt">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Всего PnL</div>
+      <div class="stat-value" id="total-pnl">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Сделок</div>
+      <div class="stat-value" id="total-trades">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Позиция</div>
+      <div class="stat-value" id="position-val">Нет</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Индикаторы</div>
+    <div class="ind-row">
+      <span class="ind-name">RSI (14)</span>
+      <div class="rsi-bar-wrap"><div class="rsi-bar-fill" id="rsi-bar" style="width:50%;background:var(--muted)"></div></div>
+      <span class="ind-val" id="rsi-val">—</span>
+    </div>
+    <div class="ind-row">
+      <span class="ind-name">MA Fast (7)</span>
+      <span class="ind-val" id="ma-fast">—</span>
+    </div>
+    <div class="ind-row">
+      <span class="ind-name">MA Slow (25)</span>
+      <span class="ind-val" id="ma-slow">—</span>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-start" id="btn-start" onclick="toggleBot(true)">▶ Запустить</button>
+    <button class="btn btn-stop" id="btn-stop" onclick="toggleBot(false)">⏹ Стоп</button>
+  </div>
+  <button class="btn btn-emergency" onclick="emergencyStop()">🚨 ЭКСТРЕННАЯ ОСТАНОВКА</button>
+</div>
+
+<!-- ══ PAGE: HISTORY ══ -->
+<div id="page-history" class="page">
+  <div class="header">
+    <div class="header-title">История сделок</div>
+  </div>
+
+  <div class="card pnl-big">
+    <div class="pnl-number" id="hist-pnl">$0.00</div>
+    <div class="pnl-label">Реализованный PnL</div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Сегодня</div>
+      <div class="stat-value" id="today-pnl">$0.00</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Прибыльных</div>
+      <div class="stat-value pos" id="win-trades">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Убыточных</div>
+      <div class="stat-value neg" id="lose-trades">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Винрейт</div>
+      <div class="stat-value" id="winrate">—</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Все сделки</div>
+    <div id="trades-list"><div class="empty-state">Сделок пока нет 📭</div></div>
+  </div>
+</div>
+
+<!-- ══ PAGE: SETTINGS ══ -->
+<div id="page-settings" class="page">
+  <div class="header">
+    <div class="header-title">Настройки</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Торговые параметры</div>
+
+    <div class="setting-row">
+      <div class="setting-label">Сумма одной сделки <span id="lbl-amount">$10</span></div>
+      <input type="range" id="sl-amount" min="1" max="100" value="10" oninput="document.getElementById('lbl-amount').textContent='$'+this.value">
+    </div>
+
+    <div class="setting-row">
+      <div class="setting-label">RSI — порог покупки <span id="lbl-rsi-buy">35</span></div>
+      <input type="range" id="sl-rsi-buy" min="10" max="50" value="35" oninput="document.getElementById('lbl-rsi-buy').textContent=this.value">
+    </div>
+
+    <div class="setting-row">
+      <div class="setting-label">RSI — порог продажи <span id="lbl-rsi-sell">65</span></div>
+      <input type="range" id="sl-rsi-sell" min="50" max="90" value="65" oninput="document.getElementById('lbl-rsi-sell').textContent=this.value">
+    </div>
+
+    <div class="setting-row">
+      <div class="setting-label">Интервал проверки <span id="lbl-interval">60 сек</span></div>
+      <input type="range" id="sl-interval" min="15" max="300" step="15" value="60" oninput="document.getElementById('lbl-interval').textContent=this.value+' сек'">
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Торговая пара</div>
+    <div class="setting-row">
+      <div class="setting-label">Символ</div>
+      <input type="text" id="inp-symbol" value="DOGEUSDT" placeholder="DOGEUSDT">
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Ежедневный отчёт</div>
+    <div class="setting-row">
+      <div class="setting-label">Время отчёта <span id="lbl-report">09:00</span></div>
+      <input type="range" id="sl-report" min="0" max="23" value="9" oninput="document.getElementById('lbl-report').textContent=String(this.value).padStart(2,'0')+':00'">
+    </div>
+  </div>
+
+  <button class="btn btn-save" onclick="saveSettings()">💾 Сохранить настройки</button>
+</div>
+
+<!-- ══ BOTTOM NAV ══ -->
+<nav class="nav">
+  <button class="nav-btn active" onclick="showPage('dashboard',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    Дашборд
+  </button>
+  <button class="nav-btn" onclick="showPage('history',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+    История
+  </button>
+  <button class="nav-btn" onclick="showPage('settings',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    Настройки
+  </button>
+</nav>
+
+<script>
+// ── Telegram WebApp init ─────────────────────────────────────────────────────
+const tg = window.Telegram?.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+
+// ── State ────────────────────────────────────────────────────────────────────
+let botRunning = false;
+let priceHistory = [];
+let timeLabels = [];
+let trades = JSON.parse(localStorage.getItem('trades') || '[]');
+let settings = JSON.parse(localStorage.getItem('settings') || JSON.stringify({
+  amount: 10, rsiBuy: 35, rsiSell: 65, interval: 60, symbol: 'DOGEUSDT', reportHour: 9
+}));
+
+// ── Chart ─────────────────────────────────────────────────────────────────────
+const ctx = document.getElementById('priceChart').getContext('2d');
+const chart = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{
+      data: [],
+      borderColor: '#00d4aa',
+      borderWidth: 2,
+      pointRadius: 0,
+      fill: true,
+      backgroundColor: (ctx) => {
+        const g = ctx.chart.ctx.createLinearGradient(0,0,0,200);
+        g.addColorStop(0,'rgba(0,212,170,0.2)');
+        g.addColorStop(1,'rgba(0,212,170,0)');
+        return g;
+      },
+      tension: 0.4
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { display: false },
+      y: { display: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8888aa', font: { size: 10 }, maxTicksLimit: 4 } }
+    }
+  }
+});
+
+// ── Fetch price from MEXC public API ─────────────────────────────────────────
+async function fetchPrice() {
+  try {
+    const r = await fetch('https://api.mexc.com/api/v3/ticker/price?symbol=' + settings.symbol);
+    const d = await r.json();
+    return parseFloat(d.price);
+  } catch(e) { return null; }
+}
+
+async function fetchKlines() {
+  try {
+    const r = await fetch(`https://api.mexc.com/api/v3/klines?symbol=${settings.symbol}&interval=5m&limit=40`);
+    return await r.json();
+  } catch(e) { return []; }
+}
+
+// ── RSI calculation ───────────────────────────────────────────────────────────
+function calcRSI(closes, period=14) {
+  if (closes.length < period+1) return 50;
+  let gains=0, losses=0;
+  for (let i=closes.length-period; i<closes.length; i++) {
+    const d = closes[i] - closes[i-1];
+    if (d > 0) gains += d; else losses += Math.abs(d);
+  }
+  const rs = (gains/period) / (losses/period || 0.0001);
+  return 100 - (100/(1+rs));
+}
+function calcMA(closes, period) {
+  if (closes.length < period) return closes[closes.length-1];
+  return closes.slice(-period).reduce((a,b)=>a+b,0) / period;
+}
+
+// ── Update UI ─────────────────────────────────────────────────────────────────
+let prevPrice = null;
+async function updateDashboard() {
+  const klines = await fetchKlines();
+  if (!klines.length) return;
+
+  const closes = klines.map(k => parseFloat(k[4]));
+  const price = closes[closes.length-1];
+  const now = new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
+
+  // Price
+  document.getElementById('price-display').textContent = '$' + price.toFixed(5);
+  if (prevPrice !== null) {
+    const diff = price - prevPrice;
+    const pct = (diff/prevPrice*100).toFixed(2);
+    const el = document.getElementById('price-change');
+    el.textContent = (diff>=0?'+':'') + diff.toFixed(5) + ' (' + (diff>=0?'+':'') + pct + '%)';
+    el.className = 'price-change ' + (diff>=0?'pos':'neg');
+  }
+  prevPrice = price;
+
+  // Chart
+  priceHistory.push(price);
+  timeLabels.push(now);
+  if (priceHistory.length > 40) { priceHistory.shift(); timeLabels.shift(); }
+  chart.data.labels = timeLabels;
+  chart.data.datasets[0].data = priceHistory;
+  chart.update();
+
+  // Indicators
+  const rsi = calcRSI(closes);
+  const maFast = calcMA(closes, 7);
+  const maSlow = calcMA(closes, 25);
+
+  document.getElementById('rsi-val').textContent = rsi.toFixed(1);
+  const bar = document.getElementById('rsi-bar');
+  bar.style.width = rsi + '%';
+  bar.style.background = rsi < 35 ? '#00d4aa' : rsi > 65 ? '#ff4d6d' : '#ffd60a';
+
+  document.getElementById('ma-fast').textContent = '$' + maFast.toFixed(5);
+  document.getElementById('ma-slow').textContent = '$' + maSlow.toFixed(5);
+
+  // Signal
+  let signal = 'HOLD';
+  if (rsi < settings.rsiBuy && maFast > maSlow) signal = 'BUY';
+  if (rsi > settings.rsiSell && maFast < maSlow) signal = 'SELL';
+
+  const badge = document.getElementById('signal-badge');
+  badge.className = 'signal-badge ' + (signal==='BUY'?'signal-buy':signal==='SELL'?'signal-sell':'signal-hold');
+  badge.textContent = signal==='BUY'?'▲ BUY':signal==='SELL'?'▼ SELL':'— HOLD';
+
+  // Balance (from bot state via localStorage)
+  const state = JSON.parse(localStorage.getItem('bot_state') || '{}');
+  document.getElementById('bal-usdt').textContent = '$' + (state.balUsdt||0).toFixed(2);
+  const pnl = state.totalPnl || 0;
+  const pnlEl = document.getElementById('total-pnl');
+  pnlEl.textContent = (pnl>=0?'+':'') + '$' + pnl.toFixed(2);
+  pnlEl.className = 'stat-value ' + (pnl>=0?'pos':'neg');
+  document.getElementById('total-trades').textContent = state.totalTrades || 0;
+  document.getElementById('position-val').textContent = state.hasPosition ? 'Открыта' : 'Нет';
+
+  // Send signal to bot via Telegram
+  if (botRunning && tg) {
+    tg.sendData(JSON.stringify({ type:'signal', signal, price, rsi }));
+  }
+}
+
+// ── Trades history ────────────────────────────────────────────────────────────
+function renderTrades() {
+  const list = document.getElementById('trades-list');
+  const stored = JSON.parse(localStorage.getItem('trades') || '[]');
+  if (!stored.length) {
+    list.innerHTML = '<div class="empty-state">Сделок пока нет 📭</div>';
+    return;
+  }
+  const today = new Date().toDateString();
+  let todayPnl=0, wins=0, losses=0, totalPnl=0;
+  list.innerHTML = stored.slice().reverse().map(t => {
+    if (t.pnl !== undefined) {
+      totalPnl += t.pnl;
+      if (new Date(t.time).toDateString()===today) todayPnl += t.pnl;
+      if (t.pnl >= 0) wins++; else losses++;
+    }
+    const pnlStr = t.pnl !== undefined ? ((t.pnl>=0?'+':'')+'$'+t.pnl.toFixed(4)) : '';
+    return `<div class="trade-item">
+      <div class="trade-side ${t.side==='BUY'?'trade-buy':'trade-sell'}">${t.side}</div>
+      <div class="trade-info">
+        <div class="trade-price">$${parseFloat(t.price).toFixed(5)}</div>
+        <div class="trade-time">${t.time} · ${t.qty} DOGE</div>
+      </div>
+      <div class="trade-pnl ${t.pnl>=0?'pos':'neg'}">${pnlStr}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('hist-pnl').textContent = (totalPnl>=0?'+':'')+'$'+totalPnl.toFixed(4);
+  document.getElementById('hist-pnl').className = 'pnl-number '+(totalPnl>=0?'pos':'neg');
+  document.getElementById('today-pnl').textContent = (todayPnl>=0?'+':'')+'$'+todayPnl.toFixed(4);
+  document.getElementById('today-pnl').className = 'stat-value '+(todayPnl>=0?'pos':'neg');
+  document.getElementById('win-trades').textContent = wins;
+  document.getElementById('lose-trades').textContent = losses;
+  const wr = wins+losses > 0 ? Math.round(wins/(wins+losses)*100)+'%' : '—';
+  document.getElementById('winrate').textContent = wr;
+}
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+function toggleBot(start) {
+  botRunning = start;
+  document.getElementById('status-dot').className = 'status-dot' + (start?' on':'');
+  showToast(start ? '▶ Бот запущен' : '⏹ Бот остановлен');
+  if (tg) tg.sendData(JSON.stringify({ type: start ? 'start' : 'stop' }));
+}
+
+function emergencyStop() {
+  botRunning = false;
+  document.getElementById('status-dot').className = 'status-dot';
+  showToast('🚨 Экстренная остановка!');
+  if (tg) tg.sendData(JSON.stringify({ type: 'emergency_stop' }));
+}
+
+function saveSettings() {
+  settings = {
+    amount: +document.getElementById('sl-amount').value,
+    rsiBuy: +document.getElementById('sl-rsi-buy').value,
+    rsiSell: +document.getElementById('sl-rsi-sell').value,
+    interval: +document.getElementById('sl-interval').value,
+    symbol: document.getElementById('inp-symbol').value.toUpperCase(),
+    reportHour: +document.getElementById('sl-report').value,
+  };
+  localStorage.setItem('settings', JSON.stringify(settings));
+  showToast('✅ Настройки сохранены');
+  if (tg) tg.sendData(JSON.stringify({ type: 'settings', settings }));
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function showPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'history') renderTrades();
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── Init settings sliders ─────────────────────────────────────────────────────
+document.getElementById('sl-amount').value = settings.amount;
+document.getElementById('lbl-amount').textContent = '$' + settings.amount;
+document.getElementById('sl-rsi-buy').value = settings.rsiBuy;
+document.getElementById('lbl-rsi-buy').textContent = settings.rsiBuy;
+document.getElementById('sl-rsi-sell').value = settings.rsiSell;
+document.getElementById('lbl-rsi-sell').textContent = settings.rsiSell;
+document.getElementById('sl-interval').value = settings.interval;
+document.getElementById('lbl-interval').textContent = settings.interval + ' сек';
+document.getElementById('inp-symbol').value = settings.symbol;
+document.getElementById('sl-report').value = settings.reportHour;
+document.getElementById('lbl-report').textContent = String(settings.reportHour).padStart(2,'0') + ':00';
+
+// ── Start polling ─────────────────────────────────────────────────────────────
+updateDashboard();
+setInterval(updateDashboard, 15000);
+</script>
+</body>
+</html>
